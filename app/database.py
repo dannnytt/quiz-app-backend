@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncAttrs
-from sqlalchemy.orm import DeclarativeBase, declared_attr, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, declared_attr, mapped_column
 from app.config import get_db_url
 from sqlalchemy import func
 
@@ -30,5 +30,3 @@ class Base(AsyncAttrs, DeclarativeBase):
     def __tablename__(cls) -> str:
         return p.plural_noun(cls.__name__.lower())
     
-    created_at: Mapped[created_at]
-    updated_at: Mapped[updated_at]
