@@ -65,3 +65,195 @@ async def get_results(db: AsyncSession = Depends(get_db)):
 async def clear_results(db: AsyncSession = Depends(get_db)):
     await crud.clear_results(db)
     return {"detail": "Cleared"}
+
+@app.post("/api/sessions", response_model=schemas.SessionOut)
+async def create_session(
+    data: schemas.SessionCreate, 
+    db: AsyncSession = Depends(get_db)
+):
+    """Создаёт новую сессию для квиза"""
+    try:
+        session = await crud.create_session(db, data.quiz_id)
+        return session
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.post("/api/sessions/join", response_model=dict)
+async def join_session(
+    data: schemas.SessionJoin,
+    db: AsyncSession = Depends(get_db)
+):
+    """Присоединяет игрока к сессии по коду"""
+    # Находим сессию по коду
+    session = await crud.get_session_by_code(db, data.host_code)
+    if not session or session.status != "waiting":
+        raise HTTPException(status_code=404, detail="Session not found or closed")
+    
+    player, session = await crud.join_session(db, session.id, data.nickname)
+    if not player:
+        raise HTTPException(status_code=400, detail="Invalid nickname")
+    
+    return {
+        "session_id": session.id,
+        "player_token": player.player_token,
+        "nickname": player.nickname,
+        "quiz_id": session.quiz_id
+    }
+
+
+@app.get("/api/sessions/{session_id}", response_model=schemas.SessionStateOut)
+async def get_session_state(
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Получает состояние сессии (для поллинга)"""
+    session = await crud.get_session_with_players(db, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    return {
+        "session_id": session.id,
+        "quiz_id": session.quiz_id,
+        "quiz_title": session.quiz.title if session.quiz else "",
+        "status": session.status,
+        "current_question": session.current_question if session.status == "active" else None,
+        "total_questions": len(session.quiz.questions) if session.quiz else 0,
+        "host_code": session.host_code if session.status == "waiting" else None,
+        "players": [
+            schemas.PlayerOut.model_validate(p) 
+            for p in session.players
+        ]
+    }
+
+
+@app.post("/api/sessions/{session_id}/start")
+async def start_session_endpoint(
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Запускает сессию (только для хоста)"""
+    session = await crud.start_session(db, session_id)
+    if not session:
+        raise HTTPException(status_code=400, detail="Cannot start session")
+    return {"status": "started", "session_id": session_id}
+
+
+@app.post("/api/sessions/{session_id}/next")
+async def next_question_endpoint(
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Переходит к следующему вопросу (только для хоста)"""
+    session = await crud.next_question(db, session_id)
+    if not session:
+        raise HTTPException(status_code=400, detail="Cannot advance question")
+    return {
+        "status": session.status,
+        "current_question": session.current_question
+    }
+
+
+@app.post("/api/sessions/{session_id}/answers", response_model=schemas.AnswerResult)
+async def submit_answer_endpoint(
+    session_id: str,
+    data: schemas.AnswerSubmit,
+    db: AsyncSession = Depends(get_db)
+):
+    """Отправляет ответ игрока"""
+    result = await crud.submit_answer(
+        db, 
+        data.player_token, 
+        data.question_index, 
+        data.selected_option
+    )
+    if not result:
+        raise HTTPException(status_code=400, detail="Invalid answer submission")
+    
+    answer, player = result
+    
+    # Получаем объяснение для правильного ответа
+    session = await crud.get_session_with_players(db, player.session_id)
+    explanation = None
+    if session and session.quiz:
+        q = session.quiz.questions[data.question_index]
+        explanation = q.explanation
+    
+    return {
+        "correct": answer.is_correct,
+        "explanation": explanation,
+        "score": player.score,
+        "correct_answers": player.correct_answers
+    }
+
+
+@app.post("/api/sessions/{session_id}/finish")
+async def finish_session_endpoint(
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Завершает сессию и сохраняет результаты"""
+    session = await crud.finish_session(db, session_id)
+    if not session:
+        raise HTTPException(status_code=400, detail="Cannot finish session")
+    return {"status": "finished", "session_id": session_id}
+
+
+@app.get("/api/sessions/{session_id}/leaderboard", response_model=schemas.LeaderboardOut)
+async def get_leaderboard_endpoint(
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Получает таблицу лидеров"""
+    session = await crud.get_session_with_players(db, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    leaderboard = await crud.get_leaderboard(db, session_id)
+    
+    return {
+        "session_id": session_id,
+        "status": session.status,
+        "leaderboard": [schemas.LeaderboardEntry(**entry) for entry in leaderboard]
+    }
+
+
+@app.get("/api/sessions/{session_id}/players")
+async def get_session_players(
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Получает список игроков в сессии (для обновления лобби)"""
+    session = await crud.get_session_with_players(db, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    return {
+        "players": [
+            {"nickname": p.nickname, "score": p.score, "finished": p.finished}
+            for p in session.players
+        ],
+        "count": len(session.players)
+    }
+
+@app.get("/api/sessions/{session_id}", response_model=schemas.SessionStateOut)
+async def get_session_state(
+    session_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Получает состояние сессии"""
+    try:
+        data = await crud.get_session_state_data(db, session_id)
+        if not data:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        return data
+        
+    except HTTPException:
+        raise  # Пробрасываем наши 404 и т.д.
+    except Exception as e:
+        # ✅ Логируем ошибку, чтобы видеть в консоли
+        import logging
+        logging.error(f"Session state error: {e}", exc_info=True)
+        # ✅ Возвращаем 500 с понятным сообщением (CORS добавится)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
