@@ -15,10 +15,7 @@ from alembic import context
 # Теперь относительные импорты сработают, потому что app/ уже в path
 from app.database import DATABASE_URL, Base
 from app.models import (
-    User, 
-    Quiz, Question, AnswerOption, 
-    QuizSession, SessionParticipant, 
-    AnswerSubmission
+    Quiz, Question, Result
 )
 
 # this is the Alembic Config object, which provides
