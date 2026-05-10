@@ -57,14 +57,14 @@ async def delete_quiz(quiz_id: str, db: AsyncSession = Depends(get_db)):
 async def save_result(data: schemas.ResultCreate, db: AsyncSession = Depends(get_db)):
     return await crud.save_result(db, data)
 
-@app.get("/api/results", response_model=list[schemas.ResultOut])
-async def get_results(db: AsyncSession = Depends(get_db)):
-    return await crud.get_results(db)
+# @app.get("/api/results", response_model=list[schemas.ResultOut])
+# async def get_results(db: AsyncSession = Depends(get_db)):
+#     return await crud.get_results(db)
 
-@app.delete("/api/results")
-async def clear_results(db: AsyncSession = Depends(get_db)):
-    await crud.clear_results(db)
-    return {"detail": "Cleared"}
+# @app.delete("/api/results")
+# async def clear_results(db: AsyncSession = Depends(get_db)):
+#     await crud.clear_results(db)
+#     return {"detail": "Cleared"}
 
 @app.post("/api/sessions", response_model=schemas.SessionOut)
 async def create_session(
