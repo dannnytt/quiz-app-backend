@@ -2,7 +2,7 @@
 from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import case, extract, func, select, delete
 from sqlalchemy.orm import selectinload
 from . import models, schemas
 import uuid
@@ -393,4 +393,110 @@ async def get_session_state_data(db: AsyncSession, session_id: str):
             }
             for p in session.players
         ]
+    }
+
+async def get_quiz_analytics(db: AsyncSession, quiz_id: str) -> Optional[dict]:
+    """Собирает полную аналитику по квизу"""
+    
+    # 1. Базовая информация о квизе
+    quiz = await db.get(models.Quiz, quiz_id)
+    if not quiz:
+        return None
+    
+    # 2. Общие метрики
+    players_query = select(func.count(models.Player.id.distinct())).where(
+        models.Player.session_id.in_(
+            select(models.QuizSession.id).where(models.QuizSession.quiz_id == quiz_id)
+        )
+    )
+    total_players = await db.scalar(players_query)
+    
+    # 3. Статистика по вопросам
+    questions_stats = []
+    for idx, question in enumerate(quiz.questions):
+        # Считаем ответы на этот вопрос
+        answers_query = select(
+            func.count(models.PlayerAnswer.id),
+            func.sum(case((models.PlayerAnswer.is_correct == True, 1), else_=0)),
+            func.avg(
+                extract('epoch', models.PlayerAnswer.answered_at) - 
+                extract('epoch', models.QuizSession.started_at)
+            ).label('avg_time')
+        ).where(
+            models.PlayerAnswer.question_index == idx,
+            models.PlayerAnswer.player_id.in_(
+                select(models.Player.id).where(
+                    models.Player.session_id.in_(
+                        select(models.QuizSession.id).where(
+                            models.QuizSession.quiz_id == quiz_id
+                        )
+                    )
+                )
+            )
+        )
+        
+        result = await db.execute(answers_query)
+        row = result.first()
+        total_answers = row[0] or 0
+        correct_count = row[1] or 0
+        avg_time = row[2]  # в секундах
+        
+        # Распределение по вариантам
+        option_dist = []
+        most_wrong = None
+        max_wrong = 0
+        
+        for opt_idx in range(4):
+            opt_query = select(func.count(models.PlayerAnswer.id)).where(
+                models.PlayerAnswer.question_index == idx,
+                models.PlayerAnswer.selected_option == opt_idx,
+                models.PlayerAnswer.is_correct == False,
+                models.PlayerAnswer.player_id.in_(
+                    select(models.Player.id).where(
+                        models.Player.session_id.in_(
+                            select(models.QuizSession.id).where(
+                                models.QuizSession.quiz_id == quiz_id
+                            )
+                        )
+                    )
+                )
+            )
+            wrong_count = await db.scalar(opt_query) or 0
+            option_dist.append(wrong_count)
+            
+            # Ищем самый популярный неправильный ответ
+            if opt_idx != question.correct and wrong_count > max_wrong:
+                max_wrong = wrong_count
+                most_wrong = opt_idx
+        
+        questions_stats.append({
+            "question_index": idx,
+            "question_text": question.text[:100] + "..." if len(question.text) > 100 else question.text,
+            "total_answers": total_answers,
+            "correct_count": correct_count,
+            "wrong_count": total_answers - correct_count,
+            "accuracy_rate": round(correct_count / total_answers, 2) if total_answers > 0 else 0,
+            "avg_response_time": round(avg_time, 1) if avg_time else None,
+            "option_distribution": option_dist,
+            "most_chosen_wrong": most_wrong
+        })
+    
+    # 4. Средняя оценка и время прохождения
+    results_query = select(
+        func.avg(models.Result.score),
+        func.avg(models.Result.time)
+    ).where(models.Result.quiz_id == quiz_id)
+    
+    result_row = await db.execute(results_query)
+    avg_score, avg_time = result_row.first()
+    
+    return {
+        "quiz_id": quiz_id,
+        "quiz_title": quiz.title,
+        "total_players": total_players,
+        "total_attempts": len(quiz.questions) * total_players if total_players else 0,
+        "avg_score": round(avg_score or 0, 1),
+        "avg_completion_time": round(avg_time or 0, 1),
+        "questions": questions_stats,
+        "created_at": quiz.created_at
     }

@@ -258,3 +258,16 @@ async def get_session_state(
         logging.error(f"Session state error: {e}", exc_info=True)
         # ✅ Возвращаем 500 с понятным сообщением (CORS добавится)
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+    
+@app.get("/api/quizzes/{quiz_id}/analytics", response_model=schemas.QuizAnalytics)
+async def get_quiz_analytics_endpoint(
+    quiz_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """Возвращает аналитику по квизу (только для создателя)"""
+    # 🔐 Здесь можно добавить проверку: является ли текущий пользователь создателем
+    # Пока разрешаем всем для разработки
+    analytics = await crud.get_quiz_analytics(db, quiz_id)
+    if not analytics:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+    return analytics

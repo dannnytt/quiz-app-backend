@@ -106,3 +106,28 @@ class LeaderboardOut(BaseModel):
     session_id: str
     status: str
     leaderboard: List[LeaderboardEntry]
+
+# === ANALYTICS ===
+class QuestionStats(BaseModel):
+    question_index: int
+    question_text: str
+    total_answers: int
+    correct_count: int
+    wrong_count: int
+    accuracy_rate: float  # 0.0 - 1.0
+    avg_response_time: Optional[float]  # секунды
+    option_distribution: List[int]  # [count_A, count_B, count_C, count_D]
+    most_chosen_wrong: Optional[int]  # индекс варианта, который чаще всего выбирали ошибочно
+
+class QuizAnalytics(BaseModel):
+    quiz_id: str
+    quiz_title: str
+    total_players: int
+    total_attempts: int
+    avg_score: float
+    avg_completion_time: float  # секунды
+    questions: List[QuestionStats]
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
