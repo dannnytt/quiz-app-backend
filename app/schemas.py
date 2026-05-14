@@ -87,6 +87,7 @@ class AnswerSubmit(BaseModel):
     player_token: str
     question_index: int
     selected_option: int
+    time_left: int = Field(..., ge=0, le=300)
 
 class AnswerResult(BaseModel):
     correct: bool

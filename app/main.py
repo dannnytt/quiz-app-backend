@@ -165,7 +165,8 @@ async def submit_answer_endpoint(
         db, 
         data.player_token, 
         data.question_index, 
-        data.selected_option
+        data.selected_option,
+        data.time_left
     )
     if not result:
         raise HTTPException(status_code=400, detail="Invalid answer submission")

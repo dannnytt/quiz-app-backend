@@ -233,9 +233,11 @@ async def submit_answer(
     db: AsyncSession, 
     player_token: str, 
     question_index: int, 
-    selected_option: int
+    selected_option: int,
+    time_left: int  # ✅ Новый параметр: оставшееся время в секундах
 ) -> Optional[tuple[models.PlayerAnswer, models.Player]]:
-    """Обрабатывает ответ игрока"""
+    """Обрабатывает ответ игрока с учётом бонуса за скорость"""
+    
     # Находим игрока по токену
     result = await db.execute(
         select(models.Player)
@@ -256,11 +258,18 @@ async def submit_answer(
     
     # Получаем правильный ответ
     quiz = session.quiz
-    if question_index < 0 or question_index >= len(quiz.questions):
+    if not quiz or question_index < 0 or question_index >= len(quiz.questions):
         return None
     
     question = quiz.questions[question_index]
     is_correct = (selected_option == question.correct)
+    
+    # ✅ Рассчитываем бонус за скорость
+    max_time = quiz.time_per_question if quiz.time_per_question else 30
+    speed_bonus = 0
+    if is_correct and max_time > 0:
+        # Формула: (осталось_времени / лимит) * 50, округляем до целого
+        speed_bonus = round((time_left / max_time) * 50)
     
     # Сохраняем ответ
     answer = models.PlayerAnswer(
@@ -275,8 +284,8 @@ async def submit_answer(
     # Обновляем статистику игрока
     if is_correct:
         player.correct_answers += 1
-        # Базовые очки + бонус за скорость (опционально)
-        player.score += 100
+        # ✅ Начисляем базу + бонус за скорость
+        player.score += 100 + speed_bonus
     
     await db.commit()
     await db.refresh(answer)
