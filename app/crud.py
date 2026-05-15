@@ -296,35 +296,29 @@ async def submit_answer(
 
 
 async def finish_session(db: AsyncSession, session_id: str) -> Optional[models.QuizSession]:
-    """Завершает сессию и сохраняет результаты"""
-    session = await get_session_with_players(db, session_id)
-    if not session:
-        return None
-    
-    session.status = "finished"
-    session.finished_at = datetime.now(timezone.utc)
-    
-    # Сохраняем результаты каждого игрока в общую таблицу
-    for player in session.players:
-        time_spent = 0
-        if session.started_at and session.finished_at:
-            time_spent = int((session.finished_at - session.started_at).total_seconds())
+    """Завершает сессию (идемпотентно — можно вызывать много раз)"""
+    try:
+        session = await db.get(models.QuizSession, session_id)
+        if not session:
+            return None
         
-        result = models.Result(
-            id=str(uuid.uuid4()),
-            quiz_id=session.quiz_id,
-            quiz_name=session.quiz.title,
-            emoji=session.quiz.emoji,
-            correct=player.correct_answers,
-            total=len(session.quiz.questions),
-            score=player.score,
-            time=time_spent
-        )
-        db.add(result)
-    
-    await db.commit()
-    await db.refresh(session)
-    return session
+        # Если уже завершена — просто возвращаем (защита от повторных вызовов)
+        if session.status == "finished":
+            return session
+        
+        session.status = "finished"
+        session.finished_at = datetime.now(timezone.utc)
+        
+        await db.commit()
+        await db.refresh(session)
+        
+        return session
+        
+    except Exception as e:
+        import logging
+        logging.error(f"finish_session error: {e}")
+        await db.rollback()
+        raise  # Перебрасываем, чтобы сработал global_exception_handler
 
 
 async def get_leaderboard(db: AsyncSession, session_id: str) -> List[dict]:
