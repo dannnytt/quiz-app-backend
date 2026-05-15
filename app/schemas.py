@@ -19,7 +19,6 @@ class QuestionOut(QuestionBase):
 class QuizCreate(BaseModel):
     title: str = Field(..., max_length=100)
     desc: Optional[str] = Field(None, max_length=200)
-    emoji: str = Field(default="📝", max_length=10)
     difficulty: str = Field(default="medium", pattern="^(easy|medium|hard)$")
     time_per_question: int = Field(default=30, ge=10, le=120)
     questions: List[QuestionBase]

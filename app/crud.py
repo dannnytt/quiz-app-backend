@@ -22,7 +22,6 @@ async def create_quiz(db: AsyncSession, data: schemas.QuizCreate):
         id=str(uuid.uuid4()),
         title=data.title,
         desc=data.desc,
-        emoji=data.emoji,
         difficulty=data.difficulty,
         time_per_question=data.time_per_question,
         is_custom=True
@@ -55,7 +54,6 @@ async def update_quiz(db: AsyncSession, quiz_id: str, data: schemas.QuizCreate):
     # Обновляем основные поля
     quiz.title = data.title
     quiz.desc = data.desc
-    quiz.emoji = data.emoji
     quiz.difficulty = data.difficulty
     quiz.time_per_question = data.time_per_question
     
@@ -86,7 +84,6 @@ async def save_result(db: AsyncSession, data: schemas.ResultCreate):
         id=str(uuid.uuid4()),
         quiz_id=data.quiz_id,
         quiz_name=data.quiz_name,
-        emoji=data.emoji,
         correct=data.correct,
         total=data.total,
         score=data.score,

@@ -11,7 +11,6 @@ class Quiz(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     title = Column(String(100), nullable=False)
     desc = Column(String(200))
-    emoji = Column(String(10))
     difficulty = Column(String(20), default="medium")
     time_per_question = Column(Integer, default=30)
     is_custom = Column(Boolean, default=True)
