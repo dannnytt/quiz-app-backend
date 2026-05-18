@@ -1,8 +1,7 @@
-# backend/app/crud.py
 from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import case, extract, func, select, delete
+from sqlalchemy import case, func, select, delete
 from sqlalchemy.orm import selectinload
 from . import models, schemas
 import uuid
@@ -30,7 +29,7 @@ async def create_quiz(db: AsyncSession, data: schemas.QuizCreate):
         quiz.questions.append(
             models.Question(
                 id=str(uuid.uuid4()),
-                text=q.text,        # ✅ text, а не q
+                text=q.text,
                 options=q.options,
                 correct=q.correct,
                 explanation=q.explanation
@@ -51,19 +50,17 @@ async def update_quiz(db: AsyncSession, quiz_id: str, data: schemas.QuizCreate):
     if not quiz:
         return None
     
-    # Обновляем основные поля
     quiz.title = data.title
     quiz.desc = data.desc
     quiz.difficulty = data.difficulty
     quiz.time_per_question = data.time_per_question
     
-    # Полностью перезаписываем вопросы
     await db.execute(delete(models.Question).where(models.Question.quiz_id == quiz_id))
     for q in data.questions:
         quiz.questions.append(
             models.Question(
                 id=str(uuid.uuid4()),
-                text=q.text,        # ✅ text, а не q
+                text=q.text,
                 options=q.options,
                 correct=q.correct,
                 explanation=q.explanation
@@ -114,12 +111,10 @@ def _generate_host_code(length: int = 6) -> str:
 
 async def create_session(db: AsyncSession, quiz_id: str) -> models.QuizSession:
     """Создаёт новую сессию для квиза"""
-    # Проверяем существование квиза
     quiz = await db.get(models.Quiz, quiz_id)
     if not quiz:
         raise ValueError(f"Quiz {quiz_id} not found")
     
-    # Генерируем уникальный код
     while True:
         code = _generate_host_code()
         result = await db.execute(
@@ -145,7 +140,6 @@ async def join_session(db: AsyncSession, session_id: str, nickname: str) -> tupl
     if not session or session.status != "waiting":
         return None, None
     
-    # Ограничение на длину никнейма
     nickname = nickname.strip()[:50]
     if len(nickname) < 2:
         return None, None
@@ -154,7 +148,7 @@ async def join_session(db: AsyncSession, session_id: str, nickname: str) -> tupl
         id=str(uuid.uuid4()),
         session_id=session_id,
         nickname=nickname,
-        player_token=secrets.token_urlsafe(32)  # 43 символа, безопасно
+        player_token=secrets.token_urlsafe(32)
     )
     db.add(player)
     await db.commit()
@@ -211,11 +205,10 @@ async def next_question(db: AsyncSession, session_id: str) -> Optional[models.Qu
     if not quiz:
         return None
     
-    # Если вопросы закончились — завершаем сессию
     if session.current_question >= len(quiz.questions) - 1:
         session.status = "finished"
         session.finished_at = datetime.now(timezone.utc)
-        # Помечаем всех игроков как завершивших
+        
         for player in session.players:
             player.finished = True
     else:
@@ -235,7 +228,6 @@ async def submit_answer(
 ) -> Optional[tuple[models.PlayerAnswer, models.Player]]:
     """Обрабатывает ответ игрока, сохраняет время раздумий и начисляет бонус"""
     
-    # 1. Находим игрока
     result = await db.execute(
         select(models.Player).where(models.Player.player_token == player_token)
     )
@@ -243,16 +235,13 @@ async def submit_answer(
     if not player:
         return None
     
-    # 2. Проверяем сессию
     session = await get_session_with_players(db, player.session_id)
     if not session or session.status != "active":
         return None
     
-    # 3. Проверяем актуальность вопроса
     if question_index != session.current_question:
         return None
     
-    # 4. Валидируем квиз и вопрос
     quiz = session.quiz
     if not quiz or question_index < 0 or question_index >= len(quiz.questions):
         return None
@@ -260,31 +249,25 @@ async def submit_answer(
     question = quiz.questions[question_index]
     is_correct = (selected_option == question.correct)
     
-    # 5. 🛡️ Безопасный расчёт времени и бонуса
     max_time = quiz.time_per_question or 30
-    # Защита от рассинхрона: time_left не может быть <0 или >max_time
     valid_time_left = max(0, min(int(time_left), max_time))
     
-    # Сколько секунд игрок реально думал
     time_spent_ms = int((max_time - valid_time_left) * 1000)
     
-    # Бонус за скорость (только за правильный ответ)
     speed_bonus = 0
     if is_correct and max_time > 0:
         speed_bonus = round((valid_time_left / max_time) * 50)
     
-    # 6. Сохраняем ответ с временем раздумий
     answer = models.PlayerAnswer(
         id=str(uuid.uuid4()),
         player_id=player.id,
         question_index=question_index,
         selected_option=selected_option,
         is_correct=is_correct,
-        response_time_ms=time_spent_ms  # ✅ Ключевое исправление
+        response_time_ms=time_spent_ms
     )
     db.add(answer)
     
-    # 7. Обновляем статистику
     if is_correct:
         player.correct_answers += 1
         player.score += 100 + speed_bonus
@@ -302,7 +285,6 @@ async def finish_session(db: AsyncSession, session_id: str) -> Optional[models.Q
         if not session:
             return None
         
-        # Если уже завершена — просто возвращаем (защита от повторных вызовов)
         if session.status == "finished":
             return session
         
@@ -318,7 +300,7 @@ async def finish_session(db: AsyncSession, session_id: str) -> Optional[models.Q
         import logging
         logging.error(f"finish_session error: {e}")
         await db.rollback()
-        raise  # Перебрасываем, чтобы сработал global_exception_handler
+        raise
 
 
 async def get_leaderboard(db: AsyncSession, session_id: str) -> List[dict]:
@@ -327,16 +309,14 @@ async def get_leaderboard(db: AsyncSession, session_id: str) -> List[dict]:
     if not session:
         return []
     
-    # 🔑 Определяем хоста: первый игрок в сессии (или по префиксу ника)
     host_player = session.players[0] if session.players else None
     
-    # Фильтруем: исключаем хоста
     players_to_rank = [
         p for p in session.players 
-        if host_player is None or p.id != host_player.id  # Исправлено: проверяем через is None / is not None
+        if host_player is None or p.id != host_player.id
     ]
     
-    # Сортируем: очки (убыв.), затем никнейм
+    
     sorted_players = sorted(
         players_to_rank,
         key=lambda p: (-p.score, p.nickname)
@@ -366,7 +346,6 @@ async def get_session_state_data(db: AsyncSession, session_id: str):
     if not session:
         return None
     
-    # Безопасное получение данных о квизе
     quiz = session.quiz
     quiz_title = quiz.title if quiz else "Unknown"
     total_questions = len(quiz.questions) if quiz and quiz.questions else 0
@@ -398,7 +377,6 @@ async def get_quiz_analytics(db: AsyncSession, quiz_id: str) -> Optional[dict]:
     if not quiz:
         return None
     
-    # 1. Собираем ID всех сессий этого квиза
     sessions_result = await db.execute(
         select(models.QuizSession.id).where(models.QuizSession.quiz_id == quiz_id)
     )
@@ -411,14 +389,12 @@ async def get_quiz_analytics(db: AsyncSession, quiz_id: str) -> Optional[dict]:
             "questions": [], "created_at": quiz.created_at
         }
 
-    # 2. Уникальные игроки
     total_players = await db.scalar(
         select(func.count(models.Player.id.distinct())).where(
             models.Player.session_id.in_(session_ids)
         )
     ) or 0
 
-    # 3. Статистика по вопросам
     questions_stats = []
     for idx, question in enumerate(quiz.questions):
         # Подсчёт ответов и правильных
@@ -437,7 +413,6 @@ async def get_quiz_analytics(db: AsyncSession, quiz_id: str) -> Optional[dict]:
         total_answers = total_answers or 0
         correct_count = correct_count or 0
         
-        # ✅ ИСПРАВЛЕННОЕ ВРЕМЯ: берём среднее из response_time_ms
         avg_time_ms = await db.scalar(
             select(func.avg(models.PlayerAnswer.response_time_ms)).where(
                 models.PlayerAnswer.question_index == idx,
@@ -446,10 +421,8 @@ async def get_quiz_analytics(db: AsyncSession, quiz_id: str) -> Optional[dict]:
                 )
             )
         )
-        # Конвертируем мс → секунды, убираем None/отрицательные
         avg_response_time = round(avg_time_ms / 1000, 1) if avg_time_ms and avg_time_ms > 0 else None
 
-        # Распределение по вариантам (A, B, C, D)
         option_dist = []
         most_wrong = None
         max_wrong = 0
@@ -478,12 +451,11 @@ async def get_quiz_analytics(db: AsyncSession, quiz_id: str) -> Optional[dict]:
             "correct_count": correct_count,
             "wrong_count": total_answers - correct_count,
             "accuracy_rate": round(correct_count / total_answers, 2) if total_answers > 0 else 0,
-            "avg_response_time": avg_response_time,  # ✅ Теперь корректное значение в секундах
+            "avg_response_time": avg_response_time,
             "option_distribution": option_dist,
             "most_chosen_wrong": most_wrong
         })
 
-    # 4. Общие метрики из таблицы results
     results_stats = await db.execute(
         select(func.avg(models.Result.score), func.avg(models.Result.time))
         .where(models.Result.quiz_id == quiz_id)

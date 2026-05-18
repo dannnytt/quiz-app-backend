@@ -9,21 +9,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Создаём таблицы, если их нет
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     
-    # 2. Сидим дефолтные данные
     async with async_session_maker() as session:
         inserted = await seed_default_quizzes(session)
         if inserted:
-            print("✅ Default quizzes seeded successfully!")
+            print("Default quizzes seeded successfully!")
         else:
-            print("ℹ️  Database already contains quizzes. Skipping seed.")
+            print("Database already contains quizzes. Skipping seed.")
     
-    yield  # Сервер запущен
+    yield
 
-    # Очистка при выключении (опционально)
     await engine.dispose()
 
 app = FastAPI(title="QuizMaster API", lifespan=lifespan)
@@ -173,7 +170,6 @@ async def submit_answer_endpoint(
     
     answer, player = result
     
-    # Получаем объяснение для правильного ответа
     session = await crud.get_session_with_players(db, player.session_id)
     explanation = None
     if session and session.quiz:
@@ -250,13 +246,9 @@ async def get_session_state(
         
         return data
         
-    except HTTPException:
-        raise  # Пробрасываем наши 404 и т.д.
     except Exception as e:
-        # ✅ Логируем ошибку, чтобы видеть в консоли
         import logging
         logging.error(f"Session state error: {e}", exc_info=True)
-        # ✅ Возвращаем 500 с понятным сообщением (CORS добавится)
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
     
 @app.get("/api/quizzes/{quiz_id}/analytics", response_model=schemas.QuizAnalytics)
@@ -265,8 +257,6 @@ async def get_quiz_analytics_endpoint(
     db: AsyncSession = Depends(get_db)
 ):
     """Возвращает аналитику по квизу (только для создателя)"""
-    # 🔐 Здесь можно добавить проверку: является ли текущий пользователь создателем
-    # Пока разрешаем всем для разработки
     analytics = await crud.get_quiz_analytics(db, quiz_id)
     if not analytics:
         raise HTTPException(status_code=404, detail="Quiz not found")

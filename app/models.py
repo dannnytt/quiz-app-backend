@@ -1,8 +1,7 @@
 # app/models.py
 import uuid
-from datetime import datetime, timezone
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, JSON, ForeignKey, func
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy.orm import relationship
 from .database import Base
 
 class Quiz(Base):
@@ -16,12 +15,11 @@ class Quiz(Base):
     is_custom = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
-    # ✅ Отношения с cascade
     questions = relationship(
         "Question", 
         back_populates="quiz", 
         cascade="all, delete-orphan",
-        lazy="selectin"  # ✅ Предзагрузка вопросов
+        lazy="selectin"
     )
     sessions = relationship(
         "QuizSession", 
@@ -45,7 +43,6 @@ class Question(Base):
 
 
 class QuizSession(Base):
-    """Сессия для мультиплеера"""
     __tablename__ = "quiz_sessions"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -57,7 +54,6 @@ class QuizSession(Base):
     started_at = Column(DateTime(timezone=True), nullable=True)
     finished_at = Column(DateTime(timezone=True), nullable=True)
     
-    # ✅ Отношения
     quiz = relationship("Quiz", back_populates="sessions")
     players = relationship(
         "Player", 
@@ -68,7 +64,6 @@ class QuizSession(Base):
 
 
 class Player(Base):
-    """Игрок в сессии"""
     __tablename__ = "players"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
@@ -89,7 +84,6 @@ class Player(Base):
 
 
 class PlayerAnswer(Base):
-    """Ответ игрока"""
     __tablename__ = "player_answers"
     
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))

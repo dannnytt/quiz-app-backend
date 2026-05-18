@@ -1,11 +1,9 @@
-# backend/app/schemas.py
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 
-# === QUESTION ===
 class QuestionBase(BaseModel):
-    text: str = Field(..., max_length=300)      # ✅ text вместо q
+    text: str = Field(..., max_length=300)
     options: List[str]
     correct: int
     explanation: Optional[str] = Field(None, max_length=500)
@@ -15,7 +13,6 @@ class QuestionOut(QuestionBase):
     quiz_id: str
     model_config = ConfigDict(from_attributes=True)
 
-# === QUIZ ===
 class QuizCreate(BaseModel):
     title: str = Field(..., max_length=100)
     desc: Optional[str] = Field(None, max_length=200)
@@ -27,10 +24,9 @@ class QuizOut(QuizCreate):
     id: str
     is_custom: bool
     created_at: datetime
-    questions: List[QuestionOut]  # ✅ Вложенная схема
+    questions: List[QuestionOut]
     model_config = ConfigDict(from_attributes=True)
 
-# === RESULT ===
 class ResultCreate(BaseModel):
     quiz_id: str
     quiz_name: str
@@ -45,7 +41,6 @@ class ResultOut(ResultCreate):
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
-# === SESSION ===
 class SessionCreate(BaseModel):
     quiz_id: str
 
@@ -77,11 +72,10 @@ class SessionStateOut(BaseModel):
     status: str
     current_question: Optional[int] = None
     total_questions: int
-    host_code: Optional[str] = None  # Только для статуса waiting
+    host_code: Optional[str] = None
     players: List[PlayerOut]
     model_config = ConfigDict(from_attributes=True)
 
-# === ANSWER ===
 class AnswerSubmit(BaseModel):
     player_token: str
     question_index: int
@@ -94,7 +88,6 @@ class AnswerResult(BaseModel):
     score: int
     correct_answers: int
 
-# === LEADERBOARD ===
 class LeaderboardEntry(BaseModel):
     rank: int
     nickname: str
@@ -106,17 +99,16 @@ class LeaderboardOut(BaseModel):
     status: str
     leaderboard: List[LeaderboardEntry]
 
-# === ANALYTICS ===
 class QuestionStats(BaseModel):
     question_index: int
     question_text: str
     total_answers: int
     correct_count: int
     wrong_count: int
-    accuracy_rate: float  # 0.0 - 1.0
-    avg_response_time: Optional[float]  # секунды
-    option_distribution: List[int]  # [count_A, count_B, count_C, count_D]
-    most_chosen_wrong: Optional[int]  # индекс варианта, который чаще всего выбирали ошибочно
+    accuracy_rate: float
+    avg_response_time: Optional[float]
+    option_distribution: List[int]
+    most_chosen_wrong: Optional[int]
 
 class QuizAnalytics(BaseModel):
     quiz_id: str
@@ -124,7 +116,7 @@ class QuizAnalytics(BaseModel):
     total_players: int
     total_attempts: int
     avg_score: float
-    avg_completion_time: float  # секунды
+    avg_completion_time: float
     questions: List[QuestionStats]
     created_at: datetime
     

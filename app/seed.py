@@ -3,7 +3,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from .models import Quiz, Question
 
-# 🔹 Дефолтные квизы (можно вынести в JSON и грузить через pathlib)
 DEFAULT_QUIZZES = [
     {
         "id": "geography",
@@ -114,10 +113,9 @@ DEFAULT_QUIZZES = [
 
 async def seed_default_quizzes(session: AsyncSession) -> bool:
     """Идемпотентный сидинг. Возвращает True, если данные были вставлены."""
-    # Проверяем, есть ли уже квизы
     count = await session.scalar(select(func.count(Quiz.id)))
     if count > 0:
-        return False  # Уже засижено
+        return False
 
     quizzes_to_insert = []
     for qd in DEFAULT_QUIZZES:
