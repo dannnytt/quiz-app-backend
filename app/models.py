@@ -102,7 +102,6 @@ class Result(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     quiz_id = Column(String, nullable=False)
     quiz_name = Column(String(100))
-    emoji = Column(String(10))
     correct = Column(Integer)
     total = Column(Integer)
     score = Column(Integer)
