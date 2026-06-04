@@ -1,3 +1,4 @@
+import os
 from typing import List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +9,9 @@ import uuid
 import secrets
 import string
 from datetime import datetime, timezone
+
+UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads")
+
 
 async def get_quizzes(db: AsyncSession):
     result = await db.execute(
@@ -23,7 +27,8 @@ async def create_quiz(db: AsyncSession, data: schemas.QuizCreate):
         desc=data.desc,
         difficulty=data.difficulty,
         time_per_question=data.time_per_question,
-        is_custom=True
+        is_custom=True,
+        cover_image=data.cover_image
     )
     for q in data.questions:
         quiz.questions.append(
@@ -32,7 +37,8 @@ async def create_quiz(db: AsyncSession, data: schemas.QuizCreate):
                 text=q.text,
                 options=q.options,
                 correct=q.correct,
-                explanation=q.explanation
+                explanation=q.explanation,
+                image=q.image
             )
         )
     db.add(quiz)
@@ -50,12 +56,24 @@ async def update_quiz(db: AsyncSession, quiz_id: str, data: schemas.QuizCreate):
     if not quiz:
         return None
     
+    old_files_to_delete = []
+    if quiz.cover_image and quiz.cover_image != data.cover_image:
+        old_files_to_delete.append(quiz.cover_image)
+    
+    for old_q in quiz.questions:
+        if old_q.image:
+            new_images = [q.image for q in data.questions if q.image]
+            if old_q.image not in new_images:
+                old_files_to_delete.append(old_q.image)
+    
     quiz.title = data.title
     quiz.desc = data.desc
     quiz.difficulty = data.difficulty
     quiz.time_per_question = data.time_per_question
+    quiz.cover_image = data.cover_image
     
     await db.execute(delete(models.Question).where(models.Question.quiz_id == quiz_id))
+    
     for q in data.questions:
         quiz.questions.append(
             models.Question(
@@ -63,18 +81,61 @@ async def update_quiz(db: AsyncSession, quiz_id: str, data: schemas.QuizCreate):
                 text=q.text,
                 options=q.options,
                 correct=q.correct,
-                explanation=q.explanation
+                explanation=q.explanation,
+                image=q.image
             )
         )
     
     await db.commit()
     await db.refresh(quiz, ["questions"])
+    
+    for file_path in old_files_to_delete:
+        try:
+            from app.config import UPLOAD_DIR
+            filename = os.path.basename(file_path)
+            absolute_path = os.path.join(UPLOAD_DIR, filename)
+            if os.path.exists(absolute_path):
+                os.remove(absolute_path)
+                print(f"Deleted old file: {absolute_path}")
+        except OSError as e:
+            print(f"Failed to delete old file {file_path}: {e}")
+    
     return quiz
 
 async def delete_quiz(db: AsyncSession, quiz_id: str):
-    result = await db.execute(delete(models.Quiz).where(models.Quiz.id == quiz_id))
+    result = await db.execute(
+        select(models.Quiz)
+        .options(selectinload(models.Quiz.questions))
+        .where(models.Quiz.id == quiz_id)
+    )
+    quiz = result.scalar_one_or_none()
+    if not quiz:
+        return False
+    
+    files_to_delete = []
+    if quiz.cover_image:
+        files_to_delete.append(quiz.cover_image)
+    for question in quiz.questions:
+        if question.image:
+            files_to_delete.append(question.image)
+    
+    await db.execute(delete(models.Quiz).where(models.Quiz.id == quiz_id))
     await db.commit()
-    return result.rowcount > 0
+    
+    for file_path in files_to_delete:
+        try:
+            filename = file_path.lstrip("/").replace("\\", "/")
+            absolute_path = os.path.join(UPLOAD_DIR, os.path.basename(filename))
+            
+            if os.path.exists(absolute_path):
+                os.remove(absolute_path)
+                print(f"Deleted file: {absolute_path}")
+            else:
+                print(f"File not found (skip): {absolute_path}")
+        except OSError as e:
+            print(f"Failed to delete file {file_path}: {e}")
+    
+    return True
 
 async def save_result(db: AsyncSession, data: schemas.ResultCreate):
     result = models.Result(

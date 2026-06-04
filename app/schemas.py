@@ -7,6 +7,7 @@ class QuestionBase(BaseModel):
     options: List[str]
     correct: int
     explanation: Optional[str] = Field(None, max_length=500)
+    image: Optional[str] = None
 
 class QuestionOut(QuestionBase):
     id: str
@@ -19,6 +20,7 @@ class QuizCreate(BaseModel):
     difficulty: str = Field(default="medium", pattern="^(easy|medium|hard)$")
     time_per_question: int = Field(default=30, ge=10, le=120)
     questions: List[QuestionBase]
+    cover_image: Optional[str] = None
 
 class QuizOut(QuizCreate):
     id: str
