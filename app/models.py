@@ -14,7 +14,8 @@ class Quiz(Base):
     time_per_question = Column(Integer, default=30)
     is_custom = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    
+    cover_image = Column(String(500), nullable=True) 
+
     questions = relationship(
         "Question", 
         back_populates="quiz", 
@@ -38,6 +39,7 @@ class Question(Base):
     options = Column(JSON, nullable=False)
     correct = Column(Integer, nullable=False)
     explanation = Column(String(500), nullable=True)
+    image = Column(String(500), nullable=True)
     
     quiz = relationship("Quiz", back_populates="questions")
 
@@ -102,7 +104,6 @@ class Result(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     quiz_id = Column(String, nullable=False)
     quiz_name = Column(String(100))
-    emoji = Column(String(10))
     correct = Column(Integer)
     total = Column(Integer)
     score = Column(Integer)
