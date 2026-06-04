@@ -56,6 +56,16 @@ async def update_quiz(db: AsyncSession, quiz_id: str, data: schemas.QuizCreate):
     if not quiz:
         return None
     
+    old_files_to_delete = []
+    if quiz.cover_image and quiz.cover_image != data.cover_image:
+        old_files_to_delete.append(quiz.cover_image)
+    
+    for old_q in quiz.questions:
+        if old_q.image:
+            new_images = [q.image for q in data.questions if q.image]
+            if old_q.image not in new_images:
+                old_files_to_delete.append(old_q.image)
+    
     quiz.title = data.title
     quiz.desc = data.desc
     quiz.difficulty = data.difficulty
@@ -63,6 +73,7 @@ async def update_quiz(db: AsyncSession, quiz_id: str, data: schemas.QuizCreate):
     quiz.cover_image = data.cover_image
     
     await db.execute(delete(models.Question).where(models.Question.quiz_id == quiz_id))
+    
     for q in data.questions:
         quiz.questions.append(
             models.Question(
@@ -77,6 +88,18 @@ async def update_quiz(db: AsyncSession, quiz_id: str, data: schemas.QuizCreate):
     
     await db.commit()
     await db.refresh(quiz, ["questions"])
+    
+    for file_path in old_files_to_delete:
+        try:
+            from app.config import UPLOAD_DIR
+            filename = os.path.basename(file_path)
+            absolute_path = os.path.join(UPLOAD_DIR, filename)
+            if os.path.exists(absolute_path):
+                os.remove(absolute_path)
+                print(f"Deleted old file: {absolute_path}")
+        except OSError as e:
+            print(f"Failed to delete old file {file_path}: {e}")
+    
     return quiz
 
 async def delete_quiz(db: AsyncSession, quiz_id: str):
