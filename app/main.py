@@ -1,7 +1,11 @@
 from contextlib import asynccontextmanager
+import os
+import shutil
+import uuid
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from .database import engine, Base, get_db, async_session_maker
 from .seed import seed_default_quizzes
 from . import crud, schemas
@@ -23,6 +27,9 @@ async def lifespan(app: FastAPI):
 
     await engine.dispose()
 
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 app = FastAPI(title="QuizMaster API", lifespan=lifespan)
 
 app.add_middleware(
@@ -30,6 +37,23 @@ app.add_middleware(
     allow_origins=["http://localhost:5173"],  # Vite dev server
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
 )
+
+app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+@app.post("/api/upload/image")
+async def upload_image(file: UploadFile = File(...)):
+    """Загрузка изображения"""
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Файл должен быть изображением")
+    
+    file_extension = file.filename.split(".")[-1]
+    unique_filename = f"{uuid.uuid4()}.{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, unique_filename)
+    
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    return {"url": f"/uploads/{unique_filename}"}
 
 @app.get("/api/quizzes", response_model=list[schemas.QuizOut])
 async def read_quizzes(db: AsyncSession = Depends(get_db)):
