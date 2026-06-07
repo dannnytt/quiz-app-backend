@@ -219,6 +219,11 @@ async def get_session_players(session_id: str, db: AsyncSession = Depends(get_db
 # 🔒 АДМИНСКИЕ ЭНДПОИНТЫ (требуют Bearer-токен администратора)
 # ============================================================
 
+@app.get("/api/auth/verify")
+async def verify_admin_token(_admin: str = Depends(get_admin_token)):
+    """Проверка токена администратора. Возвращает 200 если токен верный."""
+    return {"status": "ok", "role": "admin"}
+
 @app.post("/api/quizzes", response_model=schemas.QuizOut)
 async def create_quiz(
     data: schemas.QuizCreate,
