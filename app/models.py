@@ -4,6 +4,17 @@ from sqlalchemy import Column, String, Integer, Boolean, DateTime, JSON, Foreign
 from sqlalchemy.orm import relationship
 from .database import Base
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    email = Column(String(100), unique=True, nullable=False, index=True)
+    nickname = Column(String(50), nullable=False)
+    password_hash = Column(String(200), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    quizzes = relationship("Quiz", back_populates="owner", cascade="all, delete-orphan")
+
 class Quiz(Base):
     __tablename__ = "quizzes"
     
@@ -15,6 +26,8 @@ class Quiz(Base):
     is_custom = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     cover_image = Column(String(500), nullable=True) 
+
+    owner_id = Column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
 
     questions = relationship(
         "Question", 
@@ -28,6 +41,8 @@ class Quiz(Base):
         cascade="all, delete-orphan",
         lazy="selectin"
     )
+
+    owner = relationship("User", back_populates="quizzes")
 
 
 class Question(Base):
