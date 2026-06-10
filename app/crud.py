@@ -9,14 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import case, func, select, delete
 from sqlalchemy.orm import selectinload
 
-from . import models, schemas
+from . import models, schemas, schemas_auth
 from .auth import hash_password
 from .config import UPLOAD_DIR
 
 
 # ========== ПОЛЬЗОВАТЕЛИ ==========
 
-async def create_user(db: AsyncSession, data: schemas.UserRegister) -> models.User:
+async def create_user(db: AsyncSession, data: schemas_auth.UserRegister) -> models.User:
     """Создаёт нового пользователя"""
     user = models.User(
         id=str(uuid.uuid4()),
