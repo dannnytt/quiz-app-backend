@@ -112,7 +112,6 @@ DEFAULT_QUIZZES = [
 ]
 
 async def seed_default_quizzes(session: AsyncSession) -> bool:
-    """Идемпотентный сидинг. Возвращает True, если данные были вставлены."""
     count = await session.scalar(select(func.count(Quiz.id)))
     if count > 0:
         return False
@@ -123,10 +122,11 @@ async def seed_default_quizzes(session: AsyncSession) -> bool:
             id=qd["id"],
             title=qd["title"],
             desc=qd["desc"],
-            emoji=qd["emoji"],
+            emoji=qd.get("emoji", "📝"),
             difficulty=qd["difficulty"],
             time_per_question=qd["time_per_question"],
-            is_custom=False
+            is_custom=False,
+            owner_id=None,
         )
         for qs in qd["questions"]:
             quiz.questions.append(Question(

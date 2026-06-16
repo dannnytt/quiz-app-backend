@@ -26,6 +26,8 @@ class QuizOut(QuizCreate):
     id: str
     is_custom: bool
     created_at: datetime
+    owner_id: Optional[str] = None
+    owner_nickname: Optional[str] = None
     questions: List[QuestionOut]
     model_config = ConfigDict(from_attributes=True)
 
