@@ -452,7 +452,7 @@ async def save_result(db: AsyncSession, data: schemas.ResultCreate):
 # ========== АНАЛИТИКА ==========
 
 async def get_quiz_analytics(db: AsyncSession, quiz_id: str):
-    """Аналитика по квизу — доступна только владельцу (проверка в main.py)"""
+    """Аналитика по квизу"""
     quiz = await db.get(models.Quiz, quiz_id)
     if not quiz:
         return None
@@ -464,9 +464,15 @@ async def get_quiz_analytics(db: AsyncSession, quiz_id: str):
     
     if not session_ids:
         return {
-            "quiz_id": quiz_id, "quiz_title": quiz.title, "total_players": 0,
-            "total_attempts": 0, "avg_score": 0, "avg_completion_time": 0,
-            "questions": [], "created_at": quiz.created_at
+            "quiz_id": quiz_id,
+            "quiz_title": quiz.title,
+            "total_players": 0,
+            "total_attempts": 0,
+            "avg_score": 0,
+            "avg_completion_time": 0,
+            "avg_response_time": 0,  # ✅ Добавлено
+            "questions": [],
+            "created_at": quiz.created_at
         }
 
     total_players = await db.scalar(
@@ -476,6 +482,10 @@ async def get_quiz_analytics(db: AsyncSession, quiz_id: str):
     ) or 0
 
     questions_stats = []
+    total_answers_all = 0
+    total_time_sum = 0
+    total_time_count = 0
+
     for idx, question in enumerate(quiz.questions):
         counts = await db.execute(
             select(
@@ -484,55 +494,74 @@ async def get_quiz_analytics(db: AsyncSession, quiz_id: str):
             ).where(
                 models.PlayerAnswer.question_index == idx,
                 models.PlayerAnswer.player_id.in_(
-                    select(models.Player.id).where(models.Player.session_id.in_(session_ids))
+                    select(models.Player.id).where(
+                        models.Player.session_id.in_(session_ids)
+                    )
                 )
             )
         )
-        total_answers, correct_count = counts.first()
-        total_answers = total_answers or 0
-        correct_count = correct_count or 0
+        result = counts.first()
+        total_answers = result[0] or 0
+        correct_count = result[1] or 0
+        wrong_count = total_answers - correct_count
         
+        total_answers_all += total_answers
+
+        # Среднее время для этого вопроса
         avg_time_ms = await db.scalar(
             select(func.avg(models.PlayerAnswer.response_time_ms)).where(
                 models.PlayerAnswer.question_index == idx,
                 models.PlayerAnswer.player_id.in_(
-                    select(models.Player.id).where(models.Player.session_id.in_(session_ids))
-                )
+                    select(models.Player.id).where(
+                        models.Player.session_id.in_(session_ids)
+                    )
+                ),
+                models.PlayerAnswer.response_time_ms.isnot(None)
             )
         )
-        avg_response_time = round(avg_time_ms / 1000, 1) if avg_time_ms and avg_time_ms > 0 else None
+        avg_response_time = round(avg_time_ms / 1000, 1) if avg_time_ms else None
+        
+        # ✅ Суммируем для общего среднего
+        if avg_time_ms:
+            total_time_sum += avg_time_ms
+            total_time_count += 1
 
         option_dist = []
         most_wrong = None
         max_wrong = 0
         
         for opt_idx in range(4):
-            wrong_count = await db.scalar(
+            wrong_count_opt = await db.scalar(
                 select(func.count(models.PlayerAnswer.id)).where(
                     models.PlayerAnswer.question_index == idx,
                     models.PlayerAnswer.selected_option == opt_idx,
                     models.PlayerAnswer.is_correct == False,
                     models.PlayerAnswer.player_id.in_(
-                        select(models.Player.id).where(models.Player.session_id.in_(session_ids))
+                        select(models.Player.id).where(
+                            models.Player.session_id.in_(session_ids)
+                        )
                     )
                 )
             ) or 0
-            option_dist.append(wrong_count)
+            option_dist.append(wrong_count_opt)
             
-            if opt_idx != question.correct and wrong_count > max_wrong:
-                max_wrong = wrong_count
+            if opt_idx != question.correct and wrong_count_opt > max_wrong:
+                max_wrong = wrong_count_opt
                 most_wrong = opt_idx
+
+        accuracy_rate = round(correct_count / total_answers, 2) if total_answers > 0 else 0
 
         questions_stats.append({
             "question_index": idx,
             "question_text": question.text[:100] + "..." if len(question.text) > 100 else question.text,
             "total_answers": total_answers,
             "correct_count": correct_count,
-            "wrong_count": total_answers - correct_count,
-            "accuracy_rate": round(correct_count / total_answers, 2) if total_answers > 0 else 0,
+            "wrong_count": wrong_count,
+            "accuracy_rate": accuracy_rate,
             "avg_response_time": avg_response_time,
             "option_distribution": option_dist,
-            "most_chosen_wrong": most_wrong
+            "most_chosen_wrong": most_wrong,
+            "correct_option": question.correct
         })
 
     results_stats = await db.execute(
@@ -540,14 +569,20 @@ async def get_quiz_analytics(db: AsyncSession, quiz_id: str):
         .where(models.Result.quiz_id == quiz_id)
     )
     avg_score, avg_completion = results_stats.first()
+    avg_score = round(avg_score or 0, 1)
+    avg_completion = round(avg_completion or 0, 1)
+    
+    # ✅ Вычисляем общее среднее время ответа
+    overall_avg_time = round((total_time_sum / total_time_count / 1000), 1) if total_time_count > 0 else 0
 
     return {
         "quiz_id": quiz_id,
         "quiz_title": quiz.title,
         "total_players": total_players,
-        "total_attempts": sum(q["total_answers"] for q in questions_stats),
-        "avg_score": round(avg_score or 0, 1),
-        "avg_completion_time": round(avg_completion or 0, 1),
+        "total_attempts": total_answers_all,
+        "avg_score": avg_score,
+        "avg_completion_time": avg_completion,
+        "avg_response_time": overall_avg_time,  # ✅ Возвращаем общее среднее время
         "questions": questions_stats,
         "created_at": quiz.created_at
     }
